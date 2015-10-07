@@ -1,0 +1,70 @@
+#!/bin/bash
+# chkconfig: 2345 95 05
+# description: Endeca Platform start-stop script
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+prog=endeca_platform
+lockfile=/var/lock/subsys/$prog
+
+ENDECA_USER=<%= @endeca_user %>
+
+MDEX_SH=<%= node[:endeca][:root_dir] %>/endeca/MDEX/6.5.1/mdex_setup_sh.ini
+INSTALLER_SH=<%= @platform_path %>/workspace/setup/installer_sh.ini
+CATALINA_PID=<%= @platform_path %>/workspace/state/platform.pid
+
+start() {
+  echo -n $"Starting $prog: "
+  [ -f "$lockfile" ] && return 0;
+  /bin/su - "$ENDECA_USER" -c "source $MDEX_SH; source $INSTALLER_SH; \
+                               export CATALINA_PID=$CATALINA_PID; \
+                               <%= @platform_path %>/11.1.0/tools/server/bin/startup.sh 2>&1 | logger -t endeca_ps; \
+                               exit \${PIPESTATUS[0]}"
+  retval=$?
+  echo
+  [ $retval -eq 0 ] && touch $lockfile
+  return $retval
+}
+
+stop() {
+  echo -n $"Stopping $prog: "
+  /bin/su - "$ENDECA_USER" -c "source $INSTALLER_SH; \
+                               export CATALINA_PID=$CATALINA_PID; \
+                               <%= @platform_path %>/11.1.0/tools/server/bin/shutdown.sh $@ 2>&1 | logger -t endeca_ps; \
+                               exit \${PIPESTATUS[0]}"
+  retval=$?
+  echo
+  [ $retval -eq 0 ] && rm -f $lockfile
+  return $retval
+}
+
+status() {
+  if [ -f "$CATALINA_PID" ]; then
+    if [ ! -z "$CATALINA_PID" ]; then
+      kill -0 `cat "$CATALINA_PID"` >/dev/null 2>&1
+      [ $? -eq 0 ] && return 0
+    fi
+  fi
+  # Not running
+  return 3
+}
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop "$@"
+  ;;
+  restart)
+    stop -force
+    start
+  ;;
+  status)
+    status
+  ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart|status}"
+    exit 2;
+esac

@@ -1,0 +1,71 @@
+#!/bin/bash
+#
+# Oracle Endeca Tools Service
+#
+# chkconfig: 35 95 20
+# description: Oracle Endeca Tools Service (Workbench)
+#
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+prog=endeca_workbench
+lockfile=/var/lock/subsys/$prog
+
+ENDECA_TOOLS_ROOT=<%= @tools_path %>/11.1.0
+ENDECA_USER=<%= @endeca_user %>
+CATALINA_PID=$ENDECA_TOOLS_ROOT/server/workspace/state/workbench.pid
+
+start() {
+  echo -n $"Starting $prog: "
+  [ -f "$lockfile" ] && return 0;
+  /bin/su - "$ENDECA_USER" -c "export CATALINA_PID=$CATALINA_PID; \
+                               ${ENDECA_TOOLS_ROOT}/server/bin/startup.sh 2>&1 | logger -t $prog; \
+                               exit \${PIPESTATUS[0]}"
+  retval=$?
+  echo
+  [ $retval -eq 0 ] && touch $lockfile
+  return $retval
+}
+
+stop() {
+  echo -n $"Stopping $prog: "
+  /bin/su - "$ENDECA_USER" -c "export CATALINA_PID=$CATALINA_PID; \
+                               ${ENDECA_TOOLS_ROOT}/server/bin/shutdown.sh 2>&1 | logger -t $prog; \
+                               exit \${PIPESTATUS[0]}"
+  retval=$?
+  echo
+  [ $retval -eq 0 ] && rm -f $lockfile
+  return $retval
+}
+
+status() {
+  if [ -f "$CATALINA_PID" ]; then
+    if [ ! -z "$CATALINA_PID" ]; then
+      kill -0 `cat "$CATALINA_PID"` >/dev/null 2>&1
+      [ $? -eq 0 ] && return 0
+    fi
+  fi
+  # Not running
+  return 3
+}
+
+case "$1" in
+  start)
+    start
+  ;;
+  stop)
+    stop "$@"
+  ;;
+  restart)
+    stop
+    sleep 10
+    start
+  ;;
+  status)
+    status
+  ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart|status}"
+    exit 2;
+esac
